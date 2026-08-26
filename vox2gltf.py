@@ -403,10 +403,12 @@ def convert(in_path, out_path):
     else:
         instances = []
     if not instances:
-        # legacy fallback: stagger models along +x
+        # legacy fallback: stagger models along +x, sitting on the ground
+        # (t is the model center position, so offset by half size)
         x_off = 0
         for mid, (size, _vox) in enumerate(models):
-            instances.append((mid, IDENT3, (x_off, 0, 0), ''))
+            t = (x_off + size[0] // 2, size[1] // 2, size[2] // 2)
+            instances.append((mid, IDENT3, t, ''))
             x_off += size[0] + 2
 
     # mesh every referenced model once
@@ -485,15 +487,16 @@ def convert(in_path, out_path):
         if mid not in mesh_index_per_model:
             continue
         size = models[mid][0]
-        # MV transform: world = R @ (p - c) + c + t, c = model center
+        # MV transform: world = R @ (p - c) + t, where c = model center and
+        # t is the world position of the model's center (verified against
+        # sample files: t.z == size_z/2 for models standing on the ground).
         c = [size[0] / 2.0, size[1] / 2.0, size[2] / 2.0]
         rp = mat3_mul(C_MAT, mat3_mul(r, C_MAT_T))          # R'  = C R C^T
         cp = mat3_vec(C_MAT, c)                             # c'  = C c
         tp = mat3_vec(C_MAT, t)                             # t'  = C t
         r4 = [row[:] + [0.0] for row in rp] + [[0.0, 0.0, 0.0, 1.0]]
         r4 = [[float(v) for v in row] for row in r4]
-        m = mat4_mul(t4([cp[i] + tp[i] for i in range(3)]),
-                     mat4_mul(r4, t4([-v for v in cp])))
+        m = mat4_mul(t4(tp), mat4_mul(r4, t4([-v for v in cp])))
         node = {
             'name': name or ('model_%d' % mid),
             'matrix': [float(m[row][col]) for col in range(4) for row in range(4)],
